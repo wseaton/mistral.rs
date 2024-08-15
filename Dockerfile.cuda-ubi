@@ -1,0 +1,64 @@
+FROM nvcr.io/nvidia/cuda:12.4.1-cudnn-devel-ubi9 as builder
+
+RUN dnf install -y make automake gcc gcc-c++ openssl openssl-devel
+
+RUN rpm -ivh https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
+RUN dnf config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel9/x86_64/cuda-rhel9.repo && \
+    dnf repolist && dnf config-manager --set-enabled cuda-rhel9-x86_64 && \
+    dnf config-manager --set-enabled cuda && \
+    dnf config-manager --set-enabled epel && \
+    dnf update -y
+
+RUN export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64" \
+    && export CUDA_HOME=/usr/local/cuda \
+    && export PATH="/usr/local/cuda/bin:$PATH"
+
+RUN curl https://sh.rustup.rs -sSf | bash -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+RUN rustup update nightly
+RUN rustup default nightly
+
+
+WORKDIR /opt/app-root/src
+RUN mkdir /opt/app-root/src/cargo 
+ENV CARGO_HOME=/opt/app-root/src/cargo
+
+COPY . .
+
+WORKDIR /opt/app-root/src/mistral.rs
+
+ARG CUDA_COMPUTE_CAP=86
+ENV CUDA_COMPUTE_CAP=${CUDA_COMPUTE_CAP}
+ENV RAYON_NUM_THREADS=4
+RUN RUSTFLAGS="-Z threads=4" CUDA_NVCC_FLAGS="-fPIC" cargo build --release --workspace --exclude mistralrs-pyo3 --features "${FEATURES}"
+ 
+FROM nvcr.io/nvidia/cuda:12.4.1-cudnn-runtime-ubi9 as base
+
+ENV HUGGINGFACE_HUB_CACHE=/tmp/data \
+    PORT=8080 \
+    RAYON_NUM_THREADS=8 \ 
+    LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64" \
+    CUDA_HOME=/usr/local/cuda \
+    PATH="/usr/local/cuda/bin:$PATH"
+
+# Run the script to create symlinks in /usr/local/cuda/lib64
+RUN set -eux; \
+    for lib in $(ls /usr/local/cuda/lib64); do \
+        base=$(echo $lib | sed -r 's/(.+)\.so\..+/\1.so/'); \
+        if [ "$lib" != "$base" ]; then \
+            ln -sf "/usr/local/cuda/lib64/$lib" "/usr/local/cuda/lib64/$base"; \
+        fi; \
+    done
+
+RUN dnf install libomp-devel -y && \
+    dnf update -y && \
+    dnf clean all
+
+FROM base
+
+COPY --from=builder /opt/app-root/src/cargo/bin/mistralrs-bench /usr/local/bin/mistralrs-bench
+RUN chmod +x /usr/local/bin/mistralrs-bench
+COPY --from=builder /opt/app-root/src/cargo/bin/mistralrs-server /usr/local/bin/mistralrs-server 
+RUN chmod +x /usr/local/bin/mistralrs-server
+
+ENTRYPOINT ["/usr/local/bin/mistralrs-server", "--port", "8080"]
