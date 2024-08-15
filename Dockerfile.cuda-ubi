@@ -25,7 +25,7 @@ ENV CARGO_HOME=/opt/app-root/src/cargo
 
 COPY . .
 
-WORKDIR /opt/app-root/src/mistral.rs
+WORKDIR /opt/app-root/src/mistralrs
 
 ARG CUDA_COMPUTE_CAP=86
 ENV CUDA_COMPUTE_CAP=${CUDA_COMPUTE_CAP}
@@ -57,9 +57,9 @@ RUN dnf install libomp-devel -y && \
 
 FROM base
 
-COPY --from=builder /opt/app-root/src/cargo/bin/mistralrs-bench /usr/local/bin/mistralrs-bench
+COPY --from=builder /opt/app-root/src/mistralrs/target/release/mistralrs-bench /usr/local/bin/mistralrs-bench
 RUN chmod +x /usr/local/bin/mistralrs-bench
-COPY --from=builder /opt/app-root/src/cargo/bin/mistralrs-server /usr/local/bin/mistralrs-server 
+COPY --from=builder /opt/app-root/src/mistralrs/target/release/mistralrs-server /usr/local/bin/mistralrs-server 
 RUN chmod +x /usr/local/bin/mistralrs-server
 
 ENTRYPOINT ["/usr/local/bin/mistralrs-server", "--port", "8080"]
