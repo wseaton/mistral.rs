@@ -29,7 +29,7 @@ WORKDIR /opt/app-root/src/mistralrs
 
 ARG CUDA_COMPUTE_CAP=86
 ENV CUDA_COMPUTE_CAP=${CUDA_COMPUTE_CAP}
-ARG FEATURES="cuda cudnn"
+ARG FEATURES="cuda cudnn flash-attn"
 ENV RAYON_NUM_THREADS=4
 RUN RUSTFLAGS="-Z threads=4" CUDA_NVCC_FLAGS="-fPIC" cargo build --release --workspace --exclude mistralrs-pyo3 --features "${FEATURES}"
  
