@@ -19,13 +19,11 @@ RUN rustup update nightly
 RUN rustup default nightly
 
 
-WORKDIR /opt/app-root/src
+WORKDIR /opt/app-root/src/mistralrs
 RUN mkdir /opt/app-root/src/cargo 
 ENV CARGO_HOME=/opt/app-root/src/cargo
 
 COPY . .
-
-WORKDIR /opt/app-root/src/mistralrs
 
 ARG CUDA_COMPUTE_CAP=86
 ENV CUDA_COMPUTE_CAP=${CUDA_COMPUTE_CAP}
