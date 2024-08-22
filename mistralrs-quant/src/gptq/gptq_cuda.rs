@@ -237,7 +237,9 @@ impl QuantMethod for GptqLayer {
                     bias,
                 })
             }
-            QuantMethodConfig::Gguf { .. } | QuantMethodConfig::Unquantized(_) => {
+            QuantMethodConfig::Gguf { .. }
+            | QuantMethodConfig::Unquantized(_)
+            | QuantMethodConfig::Hqq { .. } => {
                 unreachable!()
             }
         }
@@ -282,7 +284,7 @@ impl QuantMethod for GptqLayer {
 
     fn apply_isq(
         self: Arc<Self>,
-        _dtype: IsqType,
+        _dtype: Option<IsqType>,
         _device: Device,
         _n_quantized: &AtomicUsize,
     ) -> Result<Arc<dyn QuantMethod>> {

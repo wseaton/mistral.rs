@@ -140,6 +140,8 @@ fn determine_auto_dtype_all(devices: &[&Device]) -> candle_core::Result<DType> {
                         candle_core::Error::Msg(_) => continue,
                         // This is when the metal backend doesn't support bf16
                         candle_core::Error::Metal(_) => continue,
+                        // If running with RUST_BACKTRACE=1
+                        candle_core::Error::WithBacktrace { .. } => continue,
                         other => return Err(other),
                     },
                 }
@@ -160,15 +162,4 @@ impl TryIntoDType for ModelDType {
         info!("DType selected is {:?}.", dtype.as_ref().unwrap());
         dtype
     }
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct DummyConfig {
-    num_hidden_layers: usize,
-}
-
-/// Get the `num_hidden_layers` key from a config. This needs to be at the top level.
-pub fn get_num_hidden_layers(config: &str) -> anyhow::Result<usize> {
-    let cfg: DummyConfig = serde_json::from_str(config)?;
-    Ok(cfg.num_hidden_layers)
 }

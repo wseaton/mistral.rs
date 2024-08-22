@@ -11,11 +11,13 @@ use candle_core::{
 
 mod gguf;
 mod gptq;
+mod hqq;
 mod unquantized;
 mod utils;
 
 pub use gguf::GgufMatMul;
 pub use gptq::GptqLayer;
+pub use hqq::{HqqAxis, HqqBits, HqqConfig, HqqLayer};
 pub use unquantized::UnquantLinear;
 
 use candle_nn::{Linear, VarBuilder};
@@ -59,9 +61,19 @@ pub enum QuantMethodConfig {
         b: Option<Tensor>,
     },
     Unquantized(Linear),
+    Hqq {
+        tensor: Tensor,
+        bits: HqqBits,
+        group_size: NonZeroUsize,
+        axis: HqqAxis,
+        optimization_steps: Option<usize>,
+        round_zeros: Option<bool>,
+        channel_wise: Option<bool>,
+        bias: Option<Tensor>,
+    },
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Hash, Eq)]
 pub enum IsqType {
     Q4_0,
     Q4_1,
@@ -75,26 +87,51 @@ pub enum IsqType {
     Q5K,
     Q6K,
     Q8K,
+    HQQ8,
+    HQQ4,
+    // HQQ3,
+    // HQQ2,
+    // HQQ1,
 }
 
 impl TryFrom<IsqType> for GgmlDType {
     type Error = candle_core::Error;
 
     fn try_from(value: IsqType) -> Result<Self> {
-        match value {
-            IsqType::Q2K => Ok(Self::Q2K),
-            IsqType::Q3K => Ok(Self::Q3K),
-            IsqType::Q4K => Ok(Self::Q4K),
-            IsqType::Q4_0 => Ok(Self::Q4_0),
-            IsqType::Q4_1 => Ok(Self::Q4_1),
-            IsqType::Q5K => Ok(Self::Q5K),
-            IsqType::Q5_0 => Ok(Self::Q5_0),
-            IsqType::Q5_1 => Ok(Self::Q5_1),
-            IsqType::Q6K => Ok(Self::Q6K),
-            IsqType::Q8K => Ok(Self::Q8K),
-            IsqType::Q8_0 => Ok(Self::Q8_0),
-            IsqType::Q8_1 => Ok(Self::Q8_1),
+        let tp = match value {
+            IsqType::Q2K => Self::Q2K,
+            IsqType::Q3K => Self::Q3K,
+            IsqType::Q4K => Self::Q4K,
+            IsqType::Q4_0 => Self::Q4_0,
+            IsqType::Q4_1 => Self::Q4_1,
+            IsqType::Q5K => Self::Q5K,
+            IsqType::Q5_0 => Self::Q5_0,
+            IsqType::Q5_1 => Self::Q5_1,
+            IsqType::Q6K => Self::Q6K,
+            IsqType::Q8K => Self::Q8K,
+            IsqType::Q8_0 => Self::Q8_0,
+            IsqType::Q8_1 => Self::Q8_1,
+            _ => candle_core::bail!("Expected valid GGML ISQ type."),
+        };
+        #[cfg(feature = "cuda")]
+        {
+            if !matches!(
+                tp,
+                GgmlDType::Q4_0
+                    | GgmlDType::Q4_1
+                    | GgmlDType::Q5_0
+                    | GgmlDType::Q5_1
+                    | GgmlDType::Q8_0
+                    | GgmlDType::Q2K
+                    | GgmlDType::Q3K
+                    | GgmlDType::Q4K
+                    | GgmlDType::Q5K
+                    | GgmlDType::Q6K
+            ) {
+                candle_core::bail!("GGML ISQ type on CUDA must be one of `Q4_0`, `Q4_1`, `Q5_0`, `Q5_1`, `Q8_0`, `Q2K`, `Q3K`, `Q4K`, `Q5K`, `Q6K`, `HQQ8`, `HQQ4`")
+            }
         }
+        Ok(tp)
     }
 }
 
@@ -125,7 +162,7 @@ pub trait QuantMethod: Send + Sync + Debug {
     /// If the quant is backed by a qmatmul.
     fn apply_isq(
         self: Arc<Self>,
-        dtype: IsqType,
+        dtype: Option<IsqType>,
         device: Device,
         n_quantized: &AtomicUsize,
     ) -> Result<Arc<dyn QuantMethod>>;
