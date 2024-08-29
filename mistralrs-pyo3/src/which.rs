@@ -14,6 +14,7 @@ pub enum Architecture {
     Qwen2,
     Gemma2,
     Starcoder2,
+    Phi3_5MoE,
 }
 
 impl From<Architecture> for NormalLoaderType {
@@ -28,6 +29,7 @@ impl From<Architecture> for NormalLoaderType {
             Architecture::Qwen2 => Self::Qwen2,
             Architecture::Gemma2 => Self::Gemma2,
             Architecture::Starcoder2 => Self::Starcoder2,
+            Architecture::Phi3_5MoE => Self::Phi3_5MoE,
         }
     }
 }
@@ -108,12 +110,14 @@ pub enum Which {
         quantized_model_id,
         quantized_filename,
         tok_model_id = None,
+        topology = None
     ))]
     #[allow(clippy::upper_case_acronyms)]
     GGUF {
         quantized_model_id: String,
         quantized_filename: Either<String, Vec<String>>,
         tok_model_id: Option<String>,
+        topology: Option<String>,
     },
 
     #[pyo3(constructor = (
@@ -123,6 +127,7 @@ pub enum Which {
         order,
         tok_model_id = None,
         tgt_non_granular_index = None,
+        topology = None
     ))]
     XLoraGGUF {
         quantized_model_id: String,
@@ -131,6 +136,7 @@ pub enum Which {
         order: String,
         tok_model_id: Option<String>,
         tgt_non_granular_index: Option<usize>,
+        topology: Option<String>,
     },
 
     #[pyo3(constructor = (
@@ -139,6 +145,7 @@ pub enum Which {
         adapters_model_id,
         order,
         tok_model_id = None,
+        topology = None
     ))]
     LoraGGUF {
         quantized_model_id: String,
@@ -146,6 +153,7 @@ pub enum Which {
         adapters_model_id: String,
         order: String,
         tok_model_id: Option<String>,
+        topology: Option<String>,
     },
 
     #[pyo3(constructor = (
@@ -154,6 +162,7 @@ pub enum Which {
         tok_model_id,
         tokenizer_json = None,
         gqa = 1,
+        topology = None
     ))]
     #[allow(clippy::upper_case_acronyms)]
     GGML {
@@ -162,6 +171,7 @@ pub enum Which {
         tok_model_id: String,
         tokenizer_json: Option<String>,
         gqa: usize,
+        topology: Option<String>,
     },
 
     #[pyo3(constructor = (
@@ -173,6 +183,7 @@ pub enum Which {
         tokenizer_json = None,
         tgt_non_granular_index = None,
         gqa = 1,
+        topology = None
     ))]
     XLoraGGML {
         quantized_model_id: String,
@@ -183,6 +194,7 @@ pub enum Which {
         tokenizer_json: Option<String>,
         tgt_non_granular_index: Option<usize>,
         gqa: usize,
+        topology: Option<String>,
     },
 
     #[pyo3(constructor = (
@@ -193,6 +205,7 @@ pub enum Which {
         tok_model_id = None,
         tokenizer_json = None,
         gqa = 1,
+        topology = None
     ))]
     LoraGGML {
         quantized_model_id: String,
@@ -202,6 +215,7 @@ pub enum Which {
         tok_model_id: Option<String>,
         tokenizer_json: Option<String>,
         gqa: usize,
+        topology: Option<String>,
     },
 
     #[pyo3(constructor = (

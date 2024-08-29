@@ -45,6 +45,7 @@ mod models;
 mod paged_attention;
 #[cfg(not(all(feature = "cuda", target_family = "unix")))]
 use dummy_paged_attention as paged_attention;
+mod attention;
 mod pipeline;
 mod prefix_cacher;
 mod request;
@@ -66,17 +67,20 @@ pub use mistralrs_quant::IsqType;
 pub use paged_attention::{MemoryGpuConfig, PagedAttentionConfig};
 pub use pipeline::{
     chat_template::ChatTemplate, parse_isq_value, AnyMoeLoader, AnyMoePipeline, GGMLLoader,
-    GGMLLoaderBuilder, GGMLSpecificConfig, GGUFLoader, GGUFLoaderBuilder, GemmaLoader,
-    Idefics2Loader, LLaVALoader, LLaVANextLoader, LlamaLoader, Loader, LocalModelPaths,
-    MistralLoader, MixtralLoader, ModelKind, ModelPaths, NormalLoader, NormalLoaderBuilder,
-    NormalLoaderType, NormalSpecificConfig, Phi2Loader, Phi3Loader, Phi3VLoader, Qwen2Loader,
-    SpeculativeConfig, SpeculativeLoader, SpeculativePipeline, Starcoder2Loader, TokenSource,
-    VisionLoader, VisionLoaderBuilder, VisionLoaderType, VisionSpecificConfig,
+    GGMLLoaderBuilder, GGMLSpecificConfig, GGUFLoader, GGUFLoaderBuilder, GGUFSpecificConfig,
+    GemmaLoader, Idefics2Loader, LLaVALoader, LLaVANextLoader, LlamaLoader, Loader,
+    LocalModelPaths, MistralLoader, MixtralLoader, ModelKind, ModelPaths, NormalLoader,
+    NormalLoaderBuilder, NormalLoaderType, NormalSpecificConfig, Phi2Loader, Phi3Loader,
+    Phi3VLoader, Qwen2Loader, SpeculativeConfig, SpeculativeLoader, SpeculativePipeline,
+    Starcoder2Loader, TokenSource, VisionLoader, VisionLoaderBuilder, VisionLoaderType,
+    VisionSpecificConfig,
 };
 pub use request::{Constraint, MessageContent, NormalRequest, Request, RequestMessage};
 pub use response::Response;
 pub use response::*;
-pub use sampler::{CustomLogitsProcessor, SamplingParams, StopTokens, TopLogprob};
+pub use sampler::{
+    CustomLogitsProcessor, DrySamplingParams, SamplingParams, StopTokens, TopLogprob,
+};
 pub use scheduler::{DefaultSchedulerMethod, SchedulerConfig};
 use serde::Serialize;
 use tokio::runtime::Runtime;

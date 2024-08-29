@@ -78,6 +78,7 @@ class Architecture(Enum):
     Qwen2 = "qwen2"
     Gemma2 = "gemma2"
     Starcoder2 = "starcoder2"
+    Phi3_5MoE = "phi3.5moe"
 
 @dataclass
 class VisionArchitecture(Enum):
@@ -99,6 +100,7 @@ class Which(Enum):
         model_id: str
         arch: Architecture
         tokenizer_json: str | None = None
+        topology: str | None = None
 
     @dataclass
     class XLora:
@@ -108,6 +110,7 @@ class Which(Enum):
         model_id: str | None = None
         tokenizer_json: str | None = None
         tgt_non_granular_index: int | None = None
+        topology: str | None = None
 
     @dataclass
     class Lora:
@@ -116,12 +119,14 @@ class Which(Enum):
         arch: Architecture
         model_id: str | None = None
         tokenizer_json: str | None = None
+        topology: str | None = None
 
     @dataclass
     class GGUF:
         quantized_model_id: str
         quantized_filename: str | list[str]
         tok_model_id: str | None = None
+        topology: str | None = None
 
     @dataclass
     class XLoraGGUF:
@@ -131,6 +136,7 @@ class Which(Enum):
         order: str
         tok_model_id: str | None = None
         tgt_non_granular_index: int | None = None
+        topology: str | None = None
 
     @dataclass
     class LoraGGUF:
@@ -139,6 +145,7 @@ class Which(Enum):
         adapters_model_id: str
         order: str
         tok_model_id: str | None = None
+        topology: str | None = None
 
     @dataclass
     class GGML:
@@ -147,6 +154,7 @@ class Which(Enum):
         tok_model_id: str | None = None
         tokenizer_json: str | None = None
         gqa: int | None = None
+        topology: str | None = None
 
     @dataclass
     class XLoraGGML:
@@ -158,6 +166,7 @@ class Which(Enum):
         tgt_non_granular_index: int | None = None
         tokenizer_json: str | None = None
         gqa: int | None = None
+        topology: str | None = None
 
     @dataclass
     class LoraGGML:
@@ -167,12 +176,14 @@ class Which(Enum):
         order: str
         tok_model_id: str | None = None
         tokenizer_json: str | None = None
+        topology: str | None = None
 
     @dataclass
     class VisionPlain:
         model_id: str
         arch: VisionArchitecture
         tokenizer_json: str | None = None
+        topology: str | None = None
 
 class Runner:
     def __init__(
@@ -282,7 +293,7 @@ class AnyMoeConfig:
         batch_size: int = 4,
         gate_model_id: str | None = None,
         training: bool = False,
-        loss_svg: str | None = None,
+        loss_csv_path: str | None = None,
     ) -> None:
         """
         Create an AnyMoE config from the hidden size, dataset, and other metadata. The model IDs may be local paths.
@@ -299,7 +310,7 @@ class AnyMoeConfig:
         > Note: `gate_model_id` specifies the gating model ID. If `training == True`, then safetensors will be written here.
             Otherwise, the pretrained safetensors will be loaded and no training occurs.
 
-        > Note: if `training == True`, `loss_svg` has no effect. Otherwise, an SVG image will be saved here.
+        > Note: if `training == True`, `loss_csv_path` has no effect. Otherwise, an csv loss file will be saved here.
         """
         ...
 

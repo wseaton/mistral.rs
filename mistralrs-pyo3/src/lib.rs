@@ -21,11 +21,11 @@ use candle_core::Device;
 use mistralrs_core::{
     initialize_logging, paged_attn_supported, parse_isq_value, AnyMoeLoader,
     ChatCompletionResponse, CompletionResponse, Constraint, DefaultSchedulerMethod,
-    DeviceLayerMapMetadata, DeviceMapMetadata, GGMLLoaderBuilder, GGMLSpecificConfig,
-    GGUFLoaderBuilder, Loader, MemoryGpuConfig, MistralRs, MistralRsBuilder, ModelDType,
-    NormalLoaderBuilder, NormalRequest, NormalSpecificConfig, PagedAttentionConfig,
-    Request as _Request, RequestMessage, Response, SamplingParams, SchedulerConfig,
-    SpeculativeConfig, SpeculativeLoader, StopTokens, TokenSource, Tool, Topology,
+    DeviceLayerMapMetadata, DeviceMapMetadata, DrySamplingParams, GGMLLoaderBuilder,
+    GGMLSpecificConfig, GGUFLoaderBuilder, GGUFSpecificConfig, Loader, MemoryGpuConfig, MistralRs,
+    MistralRsBuilder, ModelDType, NormalLoaderBuilder, NormalRequest, NormalSpecificConfig,
+    PagedAttentionConfig, Request as _Request, RequestMessage, Response, SamplingParams,
+    SchedulerConfig, SpeculativeConfig, SpeculativeLoader, StopTokens, TokenSource, Tool, Topology,
     VisionLoaderBuilder, VisionSpecificConfig,
 };
 use pyo3::{exceptions::PyValueError, prelude::*};
@@ -149,12 +149,16 @@ fn parse_which(
             tok_model_id,
             quantized_model_id,
             quantized_filename,
+            topology,
         } => GGUFLoaderBuilder::new(
             chat_template,
             tok_model_id,
             quantized_model_id,
             quantized_filename.map_left(|f| vec![f]).into_inner(),
-            prompt_batchsize,
+            GGUFSpecificConfig {
+                prompt_batchsize,
+                topology: Topology::from_option_path(topology)?,
+            },
         )
         .build(),
         Which::XLoraGGUF {
@@ -164,12 +168,16 @@ fn parse_which(
             xlora_model_id,
             order,
             tgt_non_granular_index,
+            topology,
         } => GGUFLoaderBuilder::new(
             chat_template,
             tok_model_id,
             quantized_model_id,
             quantized_filename.map_left(|f| vec![f]).into_inner(),
-            prompt_batchsize,
+            GGUFSpecificConfig {
+                prompt_batchsize,
+                topology: Topology::from_option_path(topology)?,
+            },
         )
         .with_xlora(
             xlora_model_id,
@@ -188,12 +196,16 @@ fn parse_which(
             quantized_filename,
             adapters_model_id,
             order,
+            topology,
         } => GGUFLoaderBuilder::new(
             chat_template,
             tok_model_id,
             quantized_model_id,
             quantized_filename.map_left(|f| vec![f]).into_inner(),
-            prompt_batchsize,
+            GGUFSpecificConfig {
+                prompt_batchsize,
+                topology: Topology::from_option_path(topology)?,
+            },
         )
         .with_lora(
             adapters_model_id,
@@ -210,10 +222,12 @@ fn parse_which(
             quantized_model_id,
             quantized_filename,
             gqa,
+            topology,
         } => GGMLLoaderBuilder::new(
             GGMLSpecificConfig {
                 gqa,
                 prompt_batchsize,
+                topology: Topology::from_option_path(topology)?,
             },
             chat_template,
             tokenizer_json,
@@ -231,10 +245,12 @@ fn parse_which(
             order,
             tgt_non_granular_index,
             gqa,
+            topology,
         } => GGMLLoaderBuilder::new(
             GGMLSpecificConfig {
                 gqa,
                 prompt_batchsize,
+                topology: Topology::from_option_path(topology)?,
             },
             chat_template,
             tokenizer_json,
@@ -261,10 +277,12 @@ fn parse_which(
             adapters_model_id,
             order,
             gqa,
+            topology,
         } => GGMLLoaderBuilder::new(
             GGMLSpecificConfig {
                 gqa,
                 prompt_batchsize,
+                topology: Topology::from_option_path(topology)?,
             },
             chat_template,
             tokenizer_json,
@@ -402,7 +420,7 @@ impl Runner {
                     expert_type: amoe_conf.expert_type.into(),
                     gate_model_id: amoe_conf.gate_model_id.clone(),
                     training: amoe_conf.training,
-                    loss_svg: amoe_conf.loss_svg.clone(),
+                    loss_csv_path: amoe_conf.loss_csv_path.clone(),
                 },
                 path: amoe_conf.dataset_json,
                 prefix: amoe_conf.prefix,
@@ -578,6 +596,17 @@ impl Runner {
                 ));
             } else {
                 Constraint::None
+            };
+
+            let dry_params = if let Some(dry_multiplier) = request.dry_multiplier {
+                Some(DrySamplingParams::new_with_defaults(
+                    dry_multiplier,
+                    request.dry_sequence_breakers.clone(),
+                    request.dry_base,
+                    request.dry_allowed_length,
+                )?)
+            } else {
+                None
             };
 
             let messages = match request.messages {
@@ -784,6 +813,7 @@ impl Runner {
                     logits_bias: request.logit_bias.clone(),
                     n_choices: request.n_choices,
                     min_p: request.min_p,
+                    dry_params,
                 },
                 response: tx,
                 return_logprobs: request.logprobs,
@@ -872,6 +902,17 @@ impl Runner {
                 None
             };
 
+            let dry_params = if let Some(dry_multiplier) = request.dry_multiplier {
+                Some(DrySamplingParams::new_with_defaults(
+                    dry_multiplier,
+                    request.dry_sequence_breakers.clone(),
+                    request.dry_base,
+                    request.dry_allowed_length,
+                )?)
+            } else {
+                None
+            };
+
             let model_request = _Request::Normal(NormalRequest {
                 id: {
                     let l = NEXT_REQUEST_ID.lock().unwrap();
@@ -897,6 +938,7 @@ impl Runner {
                     logits_bias: request.logit_bias.clone(),
                     n_choices: request.n_choices,
                     min_p: request.min_p,
+                    dry_params,
                 },
                 response: tx,
                 return_logprobs: false,
