@@ -62,6 +62,7 @@ impl Engine {
         no_prefix_cache: bool,
         prefix_cache_n: usize,
         disable_eos_stop: bool,
+        throughput_logging_enabled: bool,
     ) -> Self {
         let device = get_mut_arcmutex!(pipeline).device().clone();
         let is_xlora = get_mut_arcmutex!(pipeline).get_metadata().is_xlora;
@@ -84,14 +85,8 @@ impl Engine {
             ),
             is_debug: DEBUG.load(Ordering::Relaxed),
             disable_eos_stop,
-            throughput_logging_enabled: false,
+            throughput_logging_enabled,
         }
-    }
-
-    // TODO(EricLBuehler): On v0.3.0 move this into the Engine constructor
-    /// Enable throughput logging.
-    pub fn enable_throughput_logging(&mut self) {
-        self.throughput_logging_enabled = true;
     }
 
     pub async fn run(&mut self) {
@@ -99,6 +94,9 @@ impl Engine {
         let mut last_completion_ids: Vec<usize> = vec![];
         'lp: loop {
             while let Ok(request) = self.rx.try_recv() {
+                if matches!(request, Request::Terminate) {
+                    break 'lp;
+                }
                 self.handle_request(request).await;
             }
             let run_start = Instant::now();
@@ -303,6 +301,9 @@ impl Engine {
                     {
                         // If there is nothing to do, sleep until a request comes in
                         if let Some(request) = self.rx.recv().await {
+                            if matches!(request, Request::Terminate) {
+                                break 'lp;
+                            }
                             self.handle_request(request).await;
                         }
                     }
@@ -445,6 +446,7 @@ impl Engine {
                     warn!("ISQ requantization failed: {e:?}");
                 }
             }
+            Request::Terminate => panic!("This is unreachable in `handle_request`. Termination is handled in the `run` loop."),
         }
     }
 

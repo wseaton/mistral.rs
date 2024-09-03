@@ -1,12 +1,12 @@
 use either::Either;
 use indexmap::IndexMap;
-use std::{fs::File, sync::Arc};
+use std::sync::Arc;
 use tokio::sync::mpsc::channel;
 
 use mistralrs::{
-    Constraint, DefaultSchedulerMethod, Device, DeviceMapMetadata, MistralRs, MistralRsBuilder,
-    ModelDType, NormalLoaderBuilder, NormalRequest, NormalSpecificConfig, Request, RequestMessage,
-    ResponseOk, Result, SamplingParams, SchedulerConfig, TokenSource,
+    Constraint, DefaultSchedulerMethod, Device, DeviceMapMetadata, IsqType, MistralRs,
+    MistralRsBuilder, ModelDType, NormalLoaderBuilder, NormalRequest, NormalSpecificConfig,
+    Request, RequestMessage, ResponseOk, Result, SamplingParams, SchedulerConfig, TokenSource,
 };
 
 /// Gets the best device, cpu, cuda if compiled with CUDA
@@ -23,26 +23,17 @@ pub(crate) fn best_device() -> Result<Device> {
 
 fn setup() -> anyhow::Result<Arc<MistralRs>> {
     // Select a Mistral model
-    let loader =
-        NormalLoaderBuilder::new(
-            NormalSpecificConfig {
-                use_flash_attn: false,
-                prompt_batchsize: None,
-                topology: None,
-            },
-            None,
-            None,
-            None, // Will detect from ordering file
-        )
-        .with_xlora(
-            "lamm-mit/x-lora".to_string(),
-            serde_json::from_reader(File::open("my-ordering-file.json").unwrap_or_else(|_| {
-                panic!("Could not load ordering file at my-ordering-file.json")
-            }))?,
-            false,
-            None,
-        )
-        .build(None)?;
+    let loader = NormalLoaderBuilder::new(
+        NormalSpecificConfig {
+            use_flash_attn: false,
+            prompt_batchsize: None,
+            topology: None,
+        },
+        None,
+        None,
+        Some("microsoft/Phi-3.5-MoE-instruct".to_string()),
+    )
+    .build(None)?;
     // Load, into a Pipeline
     let pipeline = loader.load_model_from_hf(
         None,
@@ -51,7 +42,7 @@ fn setup() -> anyhow::Result<Arc<MistralRs>> {
         &best_device()?,
         false,
         DeviceMapMetadata::dummy(),
-        None,
+        Some(IsqType::Q4K),
         None, // No PagedAttention.
     )?;
     // Create the MistralRs, which is a runner

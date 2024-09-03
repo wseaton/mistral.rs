@@ -254,6 +254,16 @@ fn set_gemm_reduced_precision_f16() {
 #[cfg(not(feature = "cuda"))]
 fn set_gemm_reduced_precision_f16() {}
 
+impl Drop for MistralRs {
+    fn drop(&mut self) {
+        self.sender
+            .write()
+            .expect("Failed to get sender write in Drop")
+            .blocking_send(Request::Terminate)
+            .expect("Sending failed in Drop");
+    }
+}
+
 impl MistralRs {
     fn new(config: MistralRsBuilder) -> Arc<Self> {
         let MistralRsBuilder {
@@ -283,6 +293,7 @@ impl MistralRs {
         let no_prefix_cache = no_prefix_cache.unwrap_or(false);
         let prefix_cache_n = prefix_cache_n.unwrap_or(16);
         let disable_eos_stop = disable_eos_stop.unwrap_or(false);
+        let throughput_logging_enabled = throughput_logging_enabled.is_some();
 
         let reboot_state = RebootState {
             pipeline: pipeline.clone(),
@@ -292,7 +303,7 @@ impl MistralRs {
             no_prefix_cache,
             prefix_cache_n,
             disable_eos_stop,
-            throughput_logging_enabled: throughput_logging_enabled.is_some(),
+            throughput_logging_enabled,
         };
 
         let (tx, rx) = channel(10_000);
@@ -312,10 +323,8 @@ impl MistralRs {
                     no_prefix_cache,
                     prefix_cache_n,
                     disable_eos_stop,
+                    throughput_logging_enabled,
                 );
-                if throughput_logging_enabled.is_some() {
-                    engine.enable_throughput_logging();
-                }
                 engine.run().await;
             });
         });
@@ -365,10 +374,8 @@ impl MistralRs {
                         reboot_state.no_prefix_cache,
                         reboot_state.prefix_cache_n,
                         reboot_state.disable_eos_stop,
+                        reboot_state.throughput_logging_enabled,
                     );
-                    if reboot_state.throughput_logging_enabled {
-                        engine.enable_throughput_logging();
-                    }
                     engine.run().await;
                 });
             });
