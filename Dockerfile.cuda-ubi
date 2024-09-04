@@ -49,7 +49,7 @@ RUN set -eux; \
         fi; \
     done
 
-RUN dnf install libomp-devel -y && \
+RUN dnf install strace libomp-devel -y && \
     dnf update -y && \
     dnf clean all
 
