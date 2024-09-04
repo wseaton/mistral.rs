@@ -5,8 +5,8 @@ use super::{
     TokenSource, XLoraPaths,
 };
 use super::{
-    AdapterActivationMixin, AnyMoePipelineMixin, CacheManagerMixin, IsqPipelineMixin,
-    MetadataMixin, ModelCategory, PreProcessingMixin,
+    AdapterActivationMixin, AnyMoePipelineMixin, CacheManagerMixin, ForwardInputsResult,
+    IsqOrganization, IsqPipelineMixin, MetadataMixin, ModelCategory, PreProcessingMixin,
 };
 use super::{
     AutoLoader, Gemma2Loader, GemmaLoader, LlamaLoader, MistralLoader, MixtralLoader,
@@ -58,6 +58,7 @@ pub struct NormalPipeline {
     metadata: Arc<GeneralMetadata>,
     topology: Option<Topology>,
     silent: bool,
+    organization: IsqOrganization,
 }
 
 /// A loader for a "normal" (non-quantized) model.
@@ -94,6 +95,7 @@ pub struct NormalSpecificConfig {
     pub use_flash_attn: bool,
     pub prompt_batchsize: Option<NonZeroUsize>,
     pub topology: Option<Topology>,
+    pub organization: IsqOrganization,
 }
 
 impl NormalLoaderBuilder {
@@ -348,6 +350,7 @@ impl Loader for NormalLoader {
                 device.clone(),
                 self.config.topology.as_ref(),
                 silent,
+                self.config.organization,
             )?;
         }
 
@@ -406,6 +409,7 @@ impl Loader for NormalLoader {
             }),
             topology: self.config.topology.clone(),
             silent,
+            organization: self.config.organization,
         })))
     }
 
@@ -434,7 +438,13 @@ impl IsqPipelineMixin for NormalPipeline {
     fn re_isq_model(&mut self, dtype: IsqType) -> Result<()> {
         let device = self.device().clone();
         self.model
-            .quantize(Some(dtype), device, self.topology.as_ref(), self.silent)
+            .quantize(
+                Some(dtype),
+                device,
+                self.topology.as_ref(),
+                self.silent,
+                self.organization,
+            )
             .map_err(anyhow::Error::msg)
     }
 }
@@ -488,7 +498,10 @@ impl MetadataMixin for NormalPipeline {
 
 #[async_trait::async_trait]
 impl Pipeline for NormalPipeline {
-    fn forward_inputs(&self, inputs: Box<dyn Any>) -> Result<Tensor, candle_core::Error> {
+    fn forward_inputs(
+        &self,
+        inputs: Box<dyn Any>,
+    ) -> Result<ForwardInputsResult, candle_core::Error> {
         let ModelInputs {
             input_ids,
             input_ids_full,
@@ -502,7 +515,7 @@ impl Pipeline for NormalPipeline {
             flash_meta,
             flash_meta_full,
         } = *inputs.downcast().expect("Downcast failed.");
-        match self.model.is_xlora() {
+        let logits = match self.model.is_xlora() {
             false => self.model.forward(
                 &input_ids,
                 &seqlen_offsets,
@@ -516,7 +529,7 @@ impl Pipeline for NormalPipeline {
                     )
                 }),
                 &flash_meta,
-            ),
+            )?,
             true => self.model.xlora_forward(
                 &input_ids,
                 input_ids_full.as_ref().unwrap_or(&input_ids),
@@ -530,10 +543,11 @@ impl Pipeline for NormalPipeline {
                 position_ids,
                 &flash_meta,
                 flash_meta_full.as_ref().unwrap_or(&flash_meta),
-            ),
-        }
+            )?,
+        };
+        Ok(ForwardInputsResult::CausalGeneration { logits })
     }
-    async fn sample(
+    async fn sample_causal_gen(
         &self,
         seqs: &mut [&mut Sequence],
         logits: Vec<Tensor>,
