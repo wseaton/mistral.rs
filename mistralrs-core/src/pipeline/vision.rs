@@ -1,9 +1,9 @@
 use super::cache_manager::DefaultCacheManager;
 use super::{
     get_model_paths, get_xlora_paths, AdapterActivationMixin, AnyMoePipelineMixin, Cache,
-    CacheManager, CacheManagerMixin, GeneralMetadata, IsqPipelineMixin, Loader, MetadataMixin,
-    ModelCategory, ModelKind, ModelPaths, PreProcessingMixin, Processor, TokenSource, VisionModel,
-    VisionModelLoader, XLoraPaths,
+    CacheManager, CacheManagerMixin, ForwardInputsResult, GeneralMetadata, IsqPipelineMixin,
+    Loader, MetadataMixin, ModelCategory, ModelKind, ModelPaths, PreProcessingMixin, Processor,
+    TokenSource, VisionModel, VisionModelLoader, XLoraPaths,
 };
 use super::{Idefics2Loader, LLaVALoader, LLaVANextLoader, Phi3VLoader, VisionLoaderType};
 use crate::aici::bintokens::build_tok_trie;
@@ -11,7 +11,7 @@ use crate::aici::toktree::TokTrie;
 use crate::paged_attention::{calculate_cache_config, AttentionImplementation, CacheEngine};
 use crate::pipeline::chat_template::{calculate_eos_tokens, GenerationConfig};
 use crate::pipeline::sampling::sample_and_add_toks;
-use crate::pipeline::{get_chat_template, ChatTemplate, LocalModelPaths};
+use crate::pipeline::{get_chat_template, ChatTemplate, IsqOrganization, LocalModelPaths};
 use crate::prefix_cacher::PrefixCacheManager;
 use crate::sequence::Sequence;
 use crate::utils::debug::DeviceRepr;
@@ -267,6 +267,7 @@ impl Loader for VisionLoader {
                 device.clone(),
                 self.config.topology.as_ref(),
                 silent,
+                IsqOrganization::Default,
             )?;
         }
 
@@ -345,7 +346,13 @@ impl IsqPipelineMixin for VisionPipeline {
     fn re_isq_model(&mut self, dtype: IsqType) -> Result<()> {
         let device = self.device().clone();
         self.model
-            .quantize(Some(dtype), device, self.topology.as_ref(), self.silent)
+            .quantize(
+                Some(dtype),
+                device,
+                self.topology.as_ref(),
+                self.silent,
+                IsqOrganization::Default,
+            )
             .map_err(anyhow::Error::msg)
     }
 }
@@ -392,7 +399,7 @@ impl MetadataMixin for VisionPipeline {
 
 #[async_trait::async_trait]
 impl Pipeline for VisionPipeline {
-    fn forward_inputs(&self, inputs: Box<dyn Any>) -> candle_core::Result<Tensor> {
+    fn forward_inputs(&self, inputs: Box<dyn Any>) -> candle_core::Result<ForwardInputsResult> {
         let ModelInputs {
             input_ids,
             seqlen_offsets,
@@ -404,7 +411,7 @@ impl Pipeline for VisionPipeline {
             mut paged_attn_meta,
             flash_meta,
         } = *inputs.downcast::<ModelInputs>().expect("Downcast failed.");
-        self.model.forward(
+        let logits = self.model.forward(
             &input_ids,
             pixel_values,
             &seqlen_offsets,
@@ -419,9 +426,10 @@ impl Pipeline for VisionPipeline {
                 )
             }),
             &flash_meta,
-        )
+        )?;
+        Ok(ForwardInputsResult::CausalGeneration { logits })
     }
-    async fn sample(
+    async fn sample_causal_gen(
         &self,
         seqs: &mut [&mut Sequence],
         logits: Vec<Tensor>,
